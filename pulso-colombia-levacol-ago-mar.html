@@ -437,6 +437,7 @@ const FILTER_DIMS = ['direction','area','city','contract'];
 const FILTER_TITLES = {direction:'Dirección corporativa', area:'Área', city:'Ciudad', contract:'Tipo de contrato'};
 let selected = {}; // dim -> Set of indices (undefined/absent = all)
 FILTER_DIMS.forEach(d=> selected[d] = null); // null = all selected
+const filterPanels = {}; // dim -> panel element, for cascading filter refresh
 
 function buildFilterBar(){
   const bar = document.getElementById('filterbar');
@@ -469,6 +470,7 @@ function buildFilterBar(){
     });
     group.appendChild(panel);
     bar.insertBefore(group, document.getElementById('resetBtn'));
+    filterPanels[dim] = panel;
 
     btn.addEventListener('click', (e)=>{
       e.stopPropagation();
@@ -498,7 +500,45 @@ function buildFilterBar(){
     document.querySelectorAll('.panel input[type=checkbox]').forEach(c=>c.checked=true);
     document.querySelectorAll('.filter-btn .btn-text').forEach(t=>t.textContent='Todos');
     document.querySelectorAll('.filter-btn .count-pill').forEach(p=>p.remove());
+    refreshFilterAvailability();
     render();
+  });
+
+  refreshFilterAvailability();
+}
+
+// ---------- CASCADING FILTERS ----------
+// For a given dim, find which of its values actually occur among rows that
+// pass the *other* active filters, so each filter only offers options
+// consistent with what is currently selected in the rest.
+function computeAvailableIndices(targetDim){
+  const avail = new Set();
+  const targetCol = DIM_ORDER.indexOf(targetDim);
+  const otherDims = FILTER_DIMS.filter(d=> d!==targetDim);
+  for(let i=0;i<ROWS.length;i++){
+    const row = ROWS[i];
+    let ok = true;
+    for(const dim of otherDims){
+      const sel = selected[dim];
+      if(sel === null) continue;
+      const colIdx = DIM_ORDER.indexOf(dim);
+      if(!sel.has(row[colIdx])){ ok = false; break; }
+    }
+    if(ok) avail.add(row[targetCol]);
+  }
+  return avail;
+}
+
+function refreshFilterAvailability(){
+  FILTER_DIMS.forEach(dim=>{
+    const panel = filterPanels[dim];
+    if(!panel) return;
+    const avail = computeAvailableIndices(dim);
+    panel.querySelectorAll('.opt').forEach(opt=>{
+      const chk = opt.querySelector('input[type=checkbox]');
+      const idx = parseInt(chk.dataset.idx);
+      opt.style.display = avail.has(idx) ? '' : 'none';
+    });
   });
 }
 
@@ -521,6 +561,7 @@ function applyDimFromPanel(dim, panel, totalCount){
     }
     pill.textContent = checked.length;
   }
+  refreshFilterAvailability();
   render();
 }
 
